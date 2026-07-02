@@ -13,6 +13,28 @@ import { initSlack } from './slack';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Intercept Slack challenge requests and pre-populate raw body for Bolt receiver
+app.use('/slack/events', (req: any, res, next) => {
+  let data = Buffer.alloc(0);
+  req.on('data', (chunk: Buffer) => {
+    data = Buffer.concat([data, chunk]);
+  });
+  req.on('end', () => {
+    req.rawBody = data;
+    try {
+      req.body = JSON.parse(data.toString('utf8'));
+      if (req.body && req.body.type === 'url_verification') {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end(req.body.challenge);
+        return;
+      }
+    } catch (err) {
+      req.body = {};
+    }
+    next();
+  });
+});
+
 // Initialize Slack Bolt integration
 initSlack(app);
 
