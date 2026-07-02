@@ -13,6 +13,9 @@ import { initSlack } from './slack';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Initialize Slack Bolt integration
+initSlack(app);
+
 // Enable CORS and JSON parsing
 app.use(cors());
 app.use(express.json());
@@ -636,9 +639,6 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
   }
 });
-
-// Initialize Slack Bolt integration
-initSlack(app);
 
 // Connect to MongoDB Atlas first, then start server
 connectMongo().then(() => {
