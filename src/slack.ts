@@ -9,6 +9,9 @@ import { IncidentModel } from './database/mongo';
 let slackApp: App;
 let receiver: ExpressReceiver | undefined;
 
+// In-memory registry to track connected GitHub repositories per Slack channel
+const connectedRepos: Record<string, string> = {};
+
 /**
  * Format markdown response for Slack compatibility
  */
@@ -74,7 +77,6 @@ async function fetchGitHub(url: string): Promise<any> {
  */
 async function getRepoTree(repo: string): Promise<any[]> {
   try {
-    // Try main branch first
     const data = await fetchGitHub(`https://api.github.com/repos/${repo}/git/trees/main?recursive=1`);
     return data.tree || [];
   } catch (err: any) {
@@ -111,11 +113,9 @@ function findRelevantFiles(tree: any[], query: string): string[] {
     if (item.type !== 'blob') continue;
     const pathLower = item.path.toLowerCase();
     
-    // Check if any word matches the path or filename
     const isMatched = words.some(word => {
       if (word.length < 3) return false;
-      // Skip common conversational words
-      if (['the', 'and', 'for', 'repo', 'github', 'explain', 'what', 'how', 'show', 'view', 'read'].includes(word)) return false;
+      if (['the', 'and', 'for', 'repo', 'github', 'explain', 'what', 'how', 'show', 'view', 'read', 'ask'].includes(word)) return false;
       return pathLower.includes(word);
     });
     
@@ -124,7 +124,6 @@ function findRelevantFiles(tree: any[], query: string): string[] {
     }
   }
   
-  // Regex to extract file patterns (e.g. server.ts, db.ts)
   const filenameRegex = /[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+/g;
   let match;
   while ((match = filenameRegex.exec(query)) !== null) {
@@ -138,7 +137,6 @@ function findRelevantFiles(tree: any[], query: string): string[] {
     }
   }
 
-  // Return top 5 relevant files to stay within context size limits
   return matchedPaths.slice(0, 5);
 }
 
@@ -174,15 +172,12 @@ export function initSlack(expressApp: express.Application) {
       token,
       receiver
     });
-    // Mount the slack router to Express
     expressApp.use('/slack/events', receiver.router);
     console.log('[Slack] Mounted receiver router at /slack/events');
   }
 
-  // Register Event Handlers
   registerSlackHandlers(slackApp);
 
-  // Start the App
   if (isSocketMode) {
     slackApp.start().then(() => {
       console.log('[Slack] Slack Bot started successfully in Socket Mode!');
@@ -232,35 +227,69 @@ function registerSlackHandlers(app: App) {
     const channel = event.channel;
     const threadTs = event.thread_ts || event.ts;
     
-    // Remove mention tags
     const cleanedText = rawText.replace(/<@[A-Z0-9]+>/g, '').trim();
     const lowerText = cleanedText.toLowerCase();
 
     console.log(`[Slack] App mention from user ${event.user}: "${cleanedText}"`);
 
     try {
-      // Match GitHub query regex: ask repo <owner/repo> <question>
-      const askRepoRegex = /ask\s+repo\s+([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)\s+(.+)/i;
-      const matchAskRepo = cleanedText.match(askRepoRegex);
-
-      if (matchAskRepo) {
-        const repo = matchAskRepo[1];
-        const question = matchAskRepo[2];
+      // Connect command check: connect repo <owner/repo>
+      const connectMatch = cleanedText.match(/connect\s+repo\s+([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/i);
+      if (connectMatch) {
+        const repo = connectMatch[1];
         await say({
           channel,
           thread_ts: threadTs,
-          text: `📁 Fetching repository \`${repo}\` details for codebase context...`
+          text: `📁 Verifying connection to GitHub repository \`${repo}\`...`
         });
-        await runAskRepo(repo, question, client, channel, threadTs);
+        
+        try {
+          const tree = await getRepoTree(repo);
+          if (!tree || tree.length === 0) {
+            await say({
+              channel,
+              thread_ts: threadTs,
+              text: `❌ Could not connect to repository \`${repo}\`. Verify it exists and is public, or check your GITHUB_TOKEN credentials.`
+            });
+            return;
+          }
+          
+          connectedRepos[channel] = repo;
+          await say({
+            channel,
+            thread_ts: threadTs,
+            text: `✅ *Successfully connected to repository:* \`${repo}\` for this channel!\nAll subsequent DevOps queries, release checks, and questions will now be answered using this codebase as context.`
+          });
+        } catch (err: any) {
+          await say({
+            channel,
+            thread_ts: threadTs,
+            text: `❌ Failed to connect repository \`${repo}\`: ${err.message}`
+          });
+        }
+        return;
       }
-      else if (lowerText.includes('analyze') || lowerText.includes('release')) {
-        const { version, service, repo } = parseParams(cleanedText);
+
+      // MANDATORY CHECK: Ensure a repository is connected to this channel first
+      const currentRepo = connectedRepos[channel];
+      if (!currentRepo) {
         await say({
           channel,
           thread_ts: threadTs,
-          text: `🔍 Analyzing release *${version}* for service *${service}*...`
+          text: `⚠️ *Sentinel AI is not connected to a GitHub repository!*\nBefore I can answer your questions, you must connect a repository first.\n\n👉 *Please run:* \`connect repo owner/repo\` (e.g. \`@Sentinel AI connect repo nomaantalib/Sentinel-AI-SLACK\`)`
         });
-        await runReleaseAnalysis(version, service, repo, client, channel, threadTs);
+        return;
+      }
+
+      // Handle standard queries once connected
+      if (lowerText.includes('analyze') || lowerText.includes('release')) {
+        const { version, service } = parseParams(cleanedText);
+        await say({
+          channel,
+          thread_ts: threadTs,
+          text: `🔍 Analyzing release *${version}* for service *${service}* using connected repo *${currentRepo}*...`
+        });
+        await runReleaseAnalysis(version, service, currentRepo, client, channel, threadTs);
       } 
       else if (lowerText.includes('outage') || lowerText.includes('explain') || lowerText.includes('time machine')) {
         const query = cleanedText.replace(/(explain|outage|time|machine)/gi, '').trim() || 'Friday outage';
@@ -290,15 +319,16 @@ function registerSlackHandlers(app: App) {
         await runInvestigate(service, client, channel, threadTs);
       } 
       else {
+        // Every general chat is now answered as an agent query using the connected repo
         await say({
           channel,
           thread_ts: threadTs,
-          text: `🤖 Thinking...`
+          text: `🤖 Analyzing your request using codebase context from \`${currentRepo}\`...`
         });
-        await runGeneralChat(cleanedText, client, channel, threadTs);
+        await runAskRepo(currentRepo, cleanedText, client, channel, threadTs);
       }
     } catch (err: any) {
-      console.error('[Slack] Error processing app_mention:', err);
+      console.error('[Slack app_mention] Error:', err);
       await client.chat.postMessage({
         channel,
         thread_ts: threadTs,
@@ -307,7 +337,49 @@ function registerSlackHandlers(app: App) {
     }
   });
 
-  // Slash Command: /ask-repo <owner/repo> <question>
+  // Slash Command: /connect-repo <owner/repo>
+  app.command('/connect-repo', async ({ command, ack, client }) => {
+    await ack();
+    const channel = command.channel_id;
+    const repo = command.text.trim();
+    
+    const match = repo.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)$/i);
+    if (!match) {
+      await client.chat.postMessage({
+        channel,
+        text: `❌ Invalid usage. Correct format: \`/connect-repo owner/repo\` (e.g. \`/connect-repo nomaantalib/Sentinel-AI-SLACK\`)`
+      });
+      return;
+    }
+    
+    try {
+      await client.chat.postMessage({
+        channel,
+        text: `📁 Verifying connection to GitHub repository \`${repo}\`...`
+      });
+      const tree = await getRepoTree(repo);
+      if (!tree || tree.length === 0) {
+        await client.chat.postMessage({
+          channel,
+          text: `❌ Could not connect to repository \`${repo}\`. Verify it exists and is public, or check your GITHUB_TOKEN credentials.`
+        });
+        return;
+      }
+      
+      connectedRepos[channel] = repo;
+      await client.chat.postMessage({
+        channel,
+        text: `✅ *Successfully connected to repository:* \`${repo}\` for this channel!\nAll queries will now be answered using this codebase context.`
+      });
+    } catch (err: any) {
+      await client.chat.postMessage({
+        channel,
+        text: `❌ Failed to connect repository \`${repo}\`: ${err.message}`
+      });
+    }
+  });
+
+  // Slash Command: /ask-repo <owner/repo> <question> (Kept as optional direct command)
   app.command('/ask-repo', async ({ command, ack, client }) => {
     await ack();
     const channel = command.channel_id;
@@ -317,7 +389,7 @@ function registerSlackHandlers(app: App) {
     if (!match) {
       await client.chat.postMessage({
         channel,
-        text: `❌ Invalid usage. Correct format: \`/ask-repo owner/repo your question\` (e.g. \`/ask-repo nomaantalib/Sentinel-AI-SLACK explain server.ts\`)`
+        text: `❌ Invalid usage. Correct format: \`/ask-repo owner/repo your question\``
       });
       return;
     }
@@ -328,7 +400,7 @@ function registerSlackHandlers(app: App) {
     try {
       await client.chat.postMessage({
         channel,
-        text: `📁 Querying repository \`${repo}\` for: "${question}" (triggered via slash command)...`
+        text: `📁 Querying repository \`${repo}\` for: "${question}"...`
       });
       await runAskRepo(repo, question, client, channel);
     } catch (err: any) {
@@ -342,14 +414,23 @@ function registerSlackHandlers(app: App) {
   // Slash Command: /analyze-release
   app.command('/analyze-release', async ({ command, ack, client }) => {
     await ack();
-    const { version, service, repo } = parseParams(command.text);
     const channel = command.channel_id;
+    const currentRepo = connectedRepos[channel];
+    if (!currentRepo) {
+      await client.chat.postMessage({
+        channel,
+        text: `⚠️ *No GitHub repository connected to this channel!* Please connect first using \`/connect-repo owner/repo\` or mention me with \`connect repo owner/repo\`.`
+      });
+      return;
+    }
+
+    const { version, service } = parseParams(command.text);
     try {
       await client.chat.postMessage({
         channel,
-        text: `🔍 Analyzing release *${version}* for service *${service}* (triggered via slash command)...`
+        text: `🔍 Analyzing release *${version}* for service *${service}* using connected repo *${currentRepo}*...`
       });
-      await runReleaseAnalysis(version, service, repo, client, channel);
+      await runReleaseAnalysis(version, service, currentRepo, client, channel);
     } catch (err: any) {
       await client.chat.postMessage({
         channel,
@@ -361,12 +442,21 @@ function registerSlackHandlers(app: App) {
   // Slash Command: /explain-outage
   app.command('/explain-outage', async ({ command, ack, client }) => {
     await ack();
-    const query = command.text.trim() || 'Friday outage';
     const channel = command.channel_id;
+    const currentRepo = connectedRepos[channel];
+    if (!currentRepo) {
+      await client.chat.postMessage({
+        channel,
+        text: `⚠️ *No GitHub repository connected to this channel!* Please connect first using \`/connect-repo owner/repo\` or mention me with \`connect repo owner/repo\`.`
+      });
+      return;
+    }
+
+    const query = command.text.trim() || 'Friday outage';
     try {
       await client.chat.postMessage({
         channel,
-        text: `⏳ Querying Incident Time Machine for "${query}" (triggered via slash command)...`
+        text: `⏳ Querying Incident Time Machine for "${query}"...`
       });
       await runExplainOutage(query, client, channel);
     } catch (err: any) {
@@ -380,12 +470,21 @@ function registerSlackHandlers(app: App) {
   // Slash Command: /deployment-advice
   app.command('/deployment-advice', async ({ command, ack, client }) => {
     await ack();
-    const service = command.text.trim() || 'checkout-service';
     const channel = command.channel_id;
+    const currentRepo = connectedRepos[channel];
+    if (!currentRepo) {
+      await client.chat.postMessage({
+        channel,
+        text: `⚠️ *No GitHub repository connected to this channel!* Please connect first using \`/connect-repo owner/repo\` or mention me with \`connect repo owner/repo\`.`
+      });
+      return;
+    }
+
+    const service = command.text.trim() || 'checkout-service';
     try {
       await client.chat.postMessage({
         channel,
-        text: `💡 Querying Release Advisor for service *${service}* (triggered via slash command)...`
+        text: `💡 Querying Release Advisor for service *${service}*...`
       });
       await runDeploymentAdvice(service, client, channel);
     } catch (err: any) {
@@ -399,12 +498,21 @@ function registerSlackHandlers(app: App) {
   // Slash Command: /investigate
   app.command('/investigate', async ({ command, ack, client }) => {
     await ack();
-    const service = command.text.trim() || 'checkout-service';
     const channel = command.channel_id;
+    const currentRepo = connectedRepos[channel];
+    if (!currentRepo) {
+      await client.chat.postMessage({
+        channel,
+        text: `⚠️ *No GitHub repository connected to this channel!* Please connect first using \`/connect-repo owner/repo\` or mention me with \`connect repo owner/repo\`.`
+      });
+      return;
+    }
+
+    const service = command.text.trim() || 'checkout-service';
     try {
       await client.chat.postMessage({
         channel,
-        text: `🛠️ Diagnosing active anomalies for service *${service}* (triggered via slash command)...`
+        text: `🛠️ Diagnosing active anomalies for service *${service}*...`
       });
       await runInvestigate(service, client, channel);
     } catch (err: any) {
@@ -432,14 +540,13 @@ async function runAskRepo(
       await client.chat.postMessage({
         channel,
         thread_ts: threadTs,
-        text: `❌ Could not read the file tree for repository \`${repo}\`. Verify it is public, or check your \`GITHUB_TOKEN\` / \`GITHUB_PAT\` credentials.`
+        text: `❌ Could not read the file tree for repository \`${repo}\`. Verify it exists and is public, or check your \`GITHUB_TOKEN\` / \`GITHUB_PAT\` credentials.`
       });
       return;
     }
 
     let relevantFiles = findRelevantFiles(tree, question);
     
-    // Fallback: Default to README.md and package.json if no specific files matched
     if (relevantFiles.length === 0) {
       const readme = tree.find((item: any) => item.path.toLowerCase() === 'readme.md');
       const pkg = tree.find((item: any) => item.path.toLowerCase() === 'package.json');
