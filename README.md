@@ -109,7 +109,8 @@ To maximize uptime and handle API rate limits on free tiers:
 sentinel-ai/
 ├── dist/                   # Compiled backend Node/Express JavaScript
 ├── src/                    # Backend Source (TypeScript)
-│   ├── server.ts           # Express endpoints & API routing
+│   ├── server.ts           # Express endpoints, Slack middleware, & API routing
+│   ├── slack.ts            # Slack Bolt events, slash commands, & GitHub MCP integrations
 │   ├── database/
 │   │   ├── mongo.ts        # MongoDB Atlas connector & collection seed scripts
 │   │   ├── mockDb.ts       # Fallback local mock database
@@ -127,8 +128,55 @@ sentinel-ai/
 │   ├── vite.config.ts      # Vite server configuration containing backend API proxies
 │   └── package.json        # Frontend node packages
 ├── render.yaml             # Render cloud service deployment blueprint
+├── .npmrc                  # Global npm configurations for peer-dependency handling
 └── package.json            # Backend node packages
 ```
+
+---
+
+## 💬 Slack Bot Setup & Configuration
+
+This project contains a fully operational Slack Bot that integrates directly into your workspace. It supports both **Socket Mode** and **HTTP Event Subscriptions** (via `/slack/events` routing).
+
+### 1. Bot Scopes Required
+In your [Slack App Dashboard](https://api.slack.com/apps), navigate to **OAuth & Permissions** -> **Bot Token Scopes** and add:
+- `app_mentions:read` — Read channel mentions (`@Sentinel AI ...`)
+- `channels:history` — Read public channel messages
+- `chat:write` — Post messages and replies to threads
+- `groups:history` — Read private channel messages
+- `im:history` — Read direct messages (DMs)
+- `im:write` — Send direct messages
+- `mpim:history` — Read group direct messages
+
+### 2. Event Subscriptions & Interactivity
+- Enable **Event Subscriptions** and set the **Request URL** to:
+  `https://your-render-app-url.onrender.com/slack/events`
+  - Under **Subscribe to Bot Events**, select `app_mention`.
+- Enable **Interactivity & Shortcuts** and set the **Request URL** to:
+  `https://your-render-app-url.onrender.com/slack/events`
+
+### 3. Register Slash Commands
+Create the following commands in the Slack App Dashboard:
+
+| Command | Usage Hint | Description |
+| :--- | :--- | :--- |
+| `/connect-repo` | `[owner/repo]` | Connect a GitHub repository to the Slack channel |
+| `/ask-repo` | `[owner/repo] [question]` | Ask questions about any GitHub codebase |
+| `/analyze-release` | `[version] [service=...]` | Run pre-deployment risk analyzer on connected repo |
+| `/explain-outage` | `[query]` | Reconstruct timeline of previous incidents |
+| `/deployment-advice`| `[service]` | Get canary split schedule recommendations |
+| `/investigate` | `[service]` | Run root cause analysis diagnostics |
+
+---
+
+## 🔒 Mandatory Per-Channel Repository Connection (MCP Flow)
+
+Sentinel AI requires a codebase context to run analysis and answer questions. It enforces a strict repository connection workflow:
+
+1. **Connect First:** You must link a repository to the Slack channel before asking questions:
+   - **Mention:** `@Sentinel AI connect repo owner/repo`
+   - **Command:** `/connect-repo owner/repo`
+2. **Context-Aware Answers:** Once connected, **every general query or chat** sent to the bot (e.g. `@Sentinel AI explain server.ts`) will automatically search the connected repository, read relevant source files using the GitHub API, and pass them as context to the Gemini AI.
 
 ---
 
@@ -144,13 +192,16 @@ Create a `.env` file in the root workspace folder:
 PORT=3000
 MONGO_URI=your_mongodb_connection_string_here
 FALLBACK_GEMINI_API_KEY=your_fallback_gemini_api_key_here
+SLACK_BOT_TOKEN=your_slack_bot_token_here (starts with xoxb-)
+SLACK_SIGNING_SECRET=your_slack_signing_secret_here
+SLACK_APP_TOKEN=your_slack_app_token_here (starts with xapp-, optional for Socket Mode)
 ```
 
 ### Installation & Execution
 1. Install dependencies for both project folders:
    ```bash
-   # Install root backend dependencies
-   npm install
+   # Install root backend dependencies (legacy peer deps required for Bolt Express compatibility)
+   npm install --legacy-peer-deps
    
    # Install frontend dependencies
    cd frontend
@@ -159,14 +210,12 @@ FALLBACK_GEMINI_API_KEY=your_fallback_gemini_api_key_here
    ```
 2. Build the React frontend SPA:
    ```bash
-   cd frontend
    npm run build
-   cd ..
    ```
 3. Run the development environment:
    - For backend hot-reload: `npm run dev`
    - For frontend dev server: `cd frontend && npm run dev`
-4. Open `http://localhost:3000` to access the main interface.
+4. Open `http://localhost:3000` to access the console.
 
 ---
 
