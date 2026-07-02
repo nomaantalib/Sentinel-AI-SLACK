@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sentinel AI — Predictive DevOps & Deployment Guardian</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Style Sheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+
+  <!-- ========================================== -->
+  <!-- HERO/LANDING SECTION -->
+  <!-- ========================================== -->
+  <section id="hero-section" class="hero-wrapper">
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+    
+    <div class="hero-container">
+      <nav class="hero-nav">
+        <div class="logo">
+          <i class="fa-solid fa-shield-halved text-gradient"></i>
+          <span>SENTINEL <span class="accent-text">AI</span></span>
+        </div>
+        <div class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#architecture">How It Works</a>
+          <button id="nav-launch-btn" class="btn btn-secondary">Enter Console</button>
+        </div>
+      </nav>
+
+      <div class="hero-main">
+        <div class="hero-left">
+          <div class="badge-new">
+            <span class="pulse-dot"></span>
+            <span>Slack Agent Builder Challenge</span>
+          </div>
+          <h1>The Intelligent <span class="text-gradient">Deployment Guardian</span></h1>
+          <p class="subtitle">
+            Sentinel AI predicts release failures before they break production. By proactively auditing GitHub code, Jira tickets, Prometheus telemetry, and incidents, Sentinel ensures zero-downtime deploys.
+          </p>
+          <div class="hero-ctas">
+            <button id="hero-launch-btn" class="btn btn-primary btn-glow">
+              Launch Dashboard Console <i class="fa-solid fa-arrow-right"></i>
+            </button>
+            <a href="/console?live=true" class="btn btn-outline">
+              <i class="fa-brands fa-github"></i> Connect Repository
+            </a>
+          </div>
+        </div>
+
+        <div class="hero-right">
+          <!-- Animated Telemetry Simulation Block -->
+          <div class="glass-card telemetry-preview">
+            <div class="card-header">
+              <div class="window-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <span class="title">sentinel-risk-analyzer.log</span>
+            </div>
+            <div class="code-log-box" id="hero-log-feed">
+              <div class="log-line info">[06:50:02] SENTINEL AI: Initializing pre-deployment scanner...</div>
+              <div class="log-line info">[06:50:03] github-mcp: Fetching commits & changed files (v4.2)</div>
+              <div class="log-line warn">[06:50:04] jira-mcp: Found critical open bug JIRA-101 (checkout-service)</div>
+              <div class="log-line error">[06:50:05] prometheus-mcp: Memory usage exceeds 85% warning threshold</div>
+              <div class="log-line info">[06:50:06] rag-db: Indexing database incident database matching inc_001</div>
+              <div class="log-line success">[06:50:07] gemini-llm: Model switching to gemini-2.5-flash</div>
+              <div class="log-line bold">[06:50:08] RISK PREDICTION: 76% High Risk Outage Probability</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================== -->
+  <!-- FEATURES SECTION -->
+  <!-- ========================================== -->
+  <section id="features" class="landing-section">
+    <div class="landing-container">
+      <h2 class="section-title">Core <span class="text-gradient">Guardian Features</span></h2>
+      <p class="section-subtitle">Preventing outages by proactively validating code and infrastructure before deployment.</p>
+      
+      <div class="features-grid">
+        <div class="glass-card feature-card">
+          <i class="fa-solid fa-gauge-high icon-gradient"></i>
+          <h3>Risk Analyzer</h3>
+          <p>Scans Git branches, commits, active telemetry loads, and open Jira bugs to compute a predictive failure score before code is pushed.</p>
+        </div>
+        <div class="glass-card feature-card">
+          <i class="fa-solid fa-clock-rotate-left icon-gradient"></i>
+          <h3>Incident Time Machine</h3>
+          <p>Reconstructs step-by-step chronology logs of previous production outages to audit cascading failure triggers and avoid recurrence.</p>
+        </div>
+        <div class="glass-card feature-card">
+          <i class="fa-solid fa-wand-magic-sparkles icon-gradient"></i>
+          <h3>Canary Release Advisor</h3>
+          <p>Generates optimal traffic splits (10% -> 25% -> 50% -> 100%) and safety verification checks tailored to the active service health.</p>
+        </div>
+        <div class="glass-card feature-card">
+          <i class="fa-solid fa-magnifying-glass-chart icon-gradient"></i>
+          <h3>RCA Diagnostics</h3>
+          <p>Correlates infrastructure anomalies in Prometheus logs with open code bugs using RAG search over incident runbooks.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================== -->
+  <!-- WORKING / HOW IT WORKS SECTION -->
+  <!-- ========================================== -->
+  <section id="architecture" class="landing-section bg-alt">
+    <div class="landing-container">
+      <h2 class="section-title">How It <span class="text-gradient">Works</span></h2>
+      <p class="section-subtitle">Behind the scenes of Sentinel's predictive decision-making engine.</p>
+      
+      <div class="working-flow">
+        <div class="flow-step-card">
+          <div class="step-badge">01</div>
+          <h4>Context Fetching</h4>
+          <p>Sentinel queries GitHub (recent commit diffs), Jira (active blocker tickets), and Prometheus (CPU/Memory metrics).</p>
+        </div>
+        <div class="flow-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+        <div class="flow-step-card">
+          <div class="step-badge">02</div>
+          <h4>RAG Runbook Search</h4>
+          <p>The incident details are cross-referenced with your postmortem database (ChromaDB) to fetch similar failure templates.</p>
+        </div>
+        <div class="flow-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+        <div class="flow-step-card">
+          <div class="step-badge">03</div>
+          <h4>Gemini Guardrail Synthesis</h4>
+          <p>The context payload is processed by the Gemini model queue, auto-rotating to prevent free-tier limits and fallback key blockers.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="main-footer">
+    <p>&copy; 2026 Sentinel AI. Built for the Slack Agent Builder Challenge.</p>
+  </footer>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const heroLogFeed = document.getElementById('hero-log-feed');
+      const sampleLogs = [
+        { type: 'info', text: 'github-mcp: PR #182 merged successfully.' },
+        { type: 'info', text: 'prometheus-mcp: Service checkout-service telemetry synced.' },
+        { type: 'warn', text: 'jira-mcp: Blocker ticket JIRA-102 unresolved.' },
+        { type: 'error', text: 'prometheus-mcp: Latency exceeded 200ms threshold.' },
+        { type: 'success', text: 'gemini-llm: Analysis generated via gemini-2.5-flash.' },
+        { type: 'bold', text: 'SENTINEL: Outage prediction checked (Score: 76%)' }
+      ];
+
+      if (heroLogFeed) {
+        let logIndex = 0;
+        setInterval(() => {
+          const log = sampleLogs[logIndex];
+          const div = document.createElement('div');
+          div.className = `log-line ${log.type}`;
+          const time = new Date().toLocaleTimeString();
+          div.textContent = `[${time}] ${log.text}`;
+          heroLogFeed.appendChild(div);
+          heroLogFeed.scrollTop = heroLogFeed.scrollHeight;
+          logIndex = (logIndex + 1) % sampleLogs.length;
+        }, 4000);
+      }
+
+      // Route redirects
+      document.getElementById('hero-launch-btn').addEventListener('click', () => {
+        window.location.href = '/console';
+      });
+      document.getElementById('nav-launch-btn').addEventListener('click', () => {
+        window.location.href = '/console';
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,182 @@
+{
+  "incidents": [
+    {
+      "_id": "inc_001",
+      "service": "checkout-service",
+      "date": "2026-06-05T10:00:00Z",
+      "severity": "critical",
+      "rootCause": "Database Connection Pool Saturation",
+      "timeline": [
+        "10:00 - Deployment of v4.1 started",
+        "10:02 - DB connection spikes from 40 to 150 (max capacity)",
+        "10:04 - Latency on /checkout endpoint increases to 8.4 seconds",
+        "10:07 - HTTP 504 Gateway Timeouts peak at 85%",
+        "10:12 - Deployment auto-rolled back",
+        "10:15 - Services recovered fully"
+      ],
+      "resolution": "Increased max connection pool size from 100 to 250 in checkout configuration and added Redis caching for product metadata.",
+      "similarOutagesCount": 3
+    },
+    {
+      "_id": "inc_002",
+      "service": "payment-service",
+      "date": "2026-06-08T14:15:00Z",
+      "severity": "critical",
+      "rootCause": "Memory Leak via Unclosed Stream Readers",
+      "timeline": [
+        "14:15 - Deployment of v3.9.2 completed",
+        "14:30 - Container memory usage grows from 45% to 98% linearly",
+        "14:42 - Out-Of-Memory (OOM) killer terminates pod payment-service-xyz",
+        "14:43 - Pod restarts, repeats loop",
+        "14:48 - API error rate rises to 68%",
+        "15:02 - Rolled back to v3.9.1"
+      ],
+      "resolution": "Fixed unclosed stream in PDF Invoice generator utility. Implemented strict memory limits in Kubernetes deployment files.",
+      "similarOutagesCount": 2
+    },
+    {
+      "_id": "inc_003",
+      "service": "auth-service",
+      "date": "2026-05-20T08:30:00Z",
+      "severity": "high",
+      "rootCause": "Token Verification Cache Exhaustion",
+      "timeline": [
+        "08:30 - Peak morning traffic starts",
+        "08:35 - Redis cache memory limit reached (No eviction policy set)",
+        "08:40 - Token verification requests fall back directly to DB decrypt routines",
+        "08:45 - Auth CPU usage hits 100%, authentication lag reaches 4 seconds",
+        "09:10 - Redis eviction policy updated to volatile-lru, Redis restarted"
+      ],
+      "resolution": "Updated Redis deployment configuration to include maxmemory policy as volatile-lru and doubled memory allocation.",
+      "similarOutagesCount": 1
+    }
+  ],
+  "releases": [
+    {
+      "_id": "rel_001",
+      "version": "v4.1",
+      "riskScore": 84,
+      "prediction": "high",
+      "recommendations": [
+        "Increase database connection pooling limits before triggering deploy",
+        "Perform stress testing on the checkout endpoint"
+      ]
+    },
+    {
+      "_id": "rel_002",
+      "version": "v4.2",
+      "riskScore": 76,
+      "prediction": "high",
+      "recommendations": [
+        "Delay deployment: an open critical blocker bug exists on checkout-service",
+        "Implement a Canary strategy with a 10% traffic split first"
+      ]
+    },
+    {
+      "_id": "rel_003",
+      "version": "v4.3",
+      "riskScore": 25,
+      "prediction": "low",
+      "recommendations": [
+        "Normal rolling deployment approved",
+        "Monitor memory usage closely for the first 15 minutes"
+      ]
+    }
+  ],
+  "deploymentHistory": [
+    {
+      "_id": "dep_001",
+      "service": "checkout-service",
+      "version": "v4.1",
+      "deploymentDate": "2026-06-05T10:00:00Z",
+      "status": "failed"
+    },
+    {
+      "_id": "dep_002",
+      "service": "payment-service",
+      "version": "v3.9.2",
+      "deploymentDate": "2026-06-08T14:15:00Z",
+      "status": "failed"
+    },
+    {
+      "_id": "dep_003",
+      "service": "auth-service",
+      "version": "v2.1",
+      "deploymentDate": "2026-05-20T08:30:00Z",
+      "status": "success"
+    },
+    {
+      "_id": "dep_004",
+      "service": "notification-service",
+      "version": "v1.8",
+      "deploymentDate": "2026-06-01T12:00:00Z",
+      "status": "success"
+    }
+  ],
+  "jiraTickets": [
+    {
+      "id": "JIRA-101",
+      "summary": "Memory leak detected when exporting heavy checkout reports",
+      "status": "Open",
+      "priority": "Critical",
+      "service": "checkout-service",
+      "createdDate": "2026-06-09T09:00:00Z"
+    },
+    {
+      "id": "JIRA-102",
+      "summary": "Database timeout during cart updates",
+      "status": "Open",
+      "priority": "High",
+      "service": "checkout-service",
+      "createdDate": "2026-06-10T11:30:00Z"
+    },
+    {
+      "id": "JIRA-103",
+      "summary": "CSS alignment fix on checkout header",
+      "status": "In Progress",
+      "priority": "Low",
+      "service": "checkout-service",
+      "createdDate": "2026-06-10T15:00:00Z"
+    }
+  ],
+  "prometheusMetrics": {
+    "checkout-service": {
+      "cpuUsage": "82%",
+      "memoryUsage": "89%",
+      "errorRate": "0.12%",
+      "latency": "240ms",
+      "status": "warning"
+    },
+    "payment-service": {
+      "cpuUsage": "42%",
+      "memoryUsage": "51%",
+      "errorRate": "0.01%",
+      "latency": "85ms",
+      "status": "healthy"
+    },
+    "auth-service": {
+      "cpuUsage": "31%",
+      "memoryUsage": "44%",
+      "errorRate": "0.02%",
+      "latency": "45ms",
+      "status": "healthy"
+    }
+  },
+  "runbooks": [
+    {
+      "title": "Resolving Database Connection Pool Saturation",
+      "content": "When db connection pools exhaust, checkout api requests queue and time out. Mitigate by increasing pool size parameters (e.g. pool.max=250), auditing unreturned connections to connection pools, and utilizing Redis cache buffers for repetitive static queries.",
+      "tags": ["database", "checkout", "pool", "exhaustion", "latency"]
+    },
+    {
+      "title": "Fixing Out of Memory leaks in NodeJS/TypeScript applications",
+      "content": "Out of memory exceptions are commonly caused by unclosed IO streams, holding massive array objects globally, or circular references. To troubleshoot, review memory profile heapdumps, execute GC manually in sandbox, and guarantee proper disposal of reader/writer instances inside try-finally blocks.",
+      "tags": ["memory", "leak", "oom", "node", "stream"]
+    },
+    {
+      "title": "Addressing Redis Cache Exhaustion",
+      "content": "Redis errors related to memory thresholds are mitigated by updating the maxmemory-policy configuration inside redis.conf. Use volatile-lru or allkeys-lru to allow active eviction of expired keys, avoiding server freezes and fallbacks to slower core databases.",
+      "tags": ["redis", "cache", "exhaustion", "eviction"]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: sentinel-ai
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: FALLBACK_GEMINI_API_KEY
+        sync: false
+        placeholder: "Enter your fallback Gemini API Key (e.g. AIzaSy...)"
+      - key: MONGO_URI
+        sync: false
+        placeholder: "Enter your MongoDB Atlas Connection String (e.g. mongodb+srv://...)"
+      - key: GEMINI_API_KEY
+        sync: false

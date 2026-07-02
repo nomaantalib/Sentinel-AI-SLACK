@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sentinel AI Console — Predictive DevOps Guardian</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Style Sheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+
+  <!-- ========================================== -->
+  <!-- MAIN DASHBOARD CONSOLE -->
+  <!-- ========================================== -->
+  <main id="app-console" class="console-wrapper">
+    
+    <!-- Top Global Status Bar -->
+    <header class="console-header">
+      <div class="header-left">
+        <div class="logo shrink-logo" id="console-logo-back" style="cursor: pointer;">
+          <i class="fa-solid fa-shield-halved text-gradient"></i>
+          <span>SENTINEL <span class="accent-text">AI</span></span>
+        </div>
+        <div class="mode-selector">
+          <span class="mode-label">Mode:</span>
+          <div class="toggle-switch">
+            <input type="checkbox" id="mode-toggle" checked>
+            <label for="mode-toggle">
+              <span class="toggle-btn-left">Live</span>
+              <span class="toggle-btn-right">Demo</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="status-indicators">
+          <div class="status-indicator" title="GitHub Connection Status" id="github-connection-status">
+            <i class="fa-brands fa-github text-yellow"></i> <span>Git Disconnected</span>
+          </div>
+          <div class="status-indicator" title="Prometheus Metrics Monitor">
+            <i class="fa-solid fa-chart-line text-yellow"></i> <span>Prometheus Active</span>
+          </div>
+          <div class="status-indicator" title="Gemini LLM Connectivity">
+            <i class="fa-solid fa-brain text-gradient"></i> <span id="model-status-indicator">Gemini Active</span>
+          </div>
+        </div>
+        <button id="exit-console-btn" class="btn btn-icon-only" title="Return to Home"><i class="fa-solid fa-right-from-bracket"></i></button>
+      </div>
+    </header>
+
+    <div class="console-body">
+      <!-- Sidebar Navigation -->
+      <aside class="console-sidebar">
+        <ul class="sidebar-menu">
+          <li class="active" data-tab="risk-analyzer">
+            <i class="fa-solid fa-gauge-high"></i> <span>Risk Analyzer</span>
+          </li>
+          <li data-tab="time-machine">
+            <i class="fa-solid fa-clock-rotate-left"></i> <span>Time Machine</span>
+          </li>
+          <li data-tab="release-advisor">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> <span>Release Advisor</span>
+          </li>
+          <li data-tab="root-cause">
+            <i class="fa-solid fa-magnifying-glass-chart"></i> <span>Root Cause Analysis</span>
+          </li>
+          <li data-tab="slack-simulator">
+            <i class="fa-brands fa-slack"></i> <span>Slack Simulator</span>
+          </li>
+          <li data-tab="model-config">
+            <i class="fa-solid fa-gear"></i> <span>Settings & Models</span>
+          </li>
+        </ul>
+        
+        <div class="sidebar-footer">
+          <div class="active-profile">
+            <div class="profile-info">
+              <span class="name">DevOps Operator</span>
+              <span class="role">Admin Console</span>
+            </div>
+            <i class="fa-solid fa-circle-user"></i>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Central Dashboard Content Pane -->
+      <section class="console-content">
+        
+        <!-- Tab 1: Risk Analyzer -->
+        <div id="tab-risk-analyzer" class="tab-pane active">
+          <div class="pane-grid-2">
+            <div class="glass-card fill-grid-cell">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-gauge-high"></i> Release Pre-Deployment Analyzer</h3>
+              </div>
+              <div class="card-body">
+                
+                <!-- Connect GitHub Box (Interactive Live Mode check) -->
+                <div id="github-connect-card" class="glass-card bg-glass-dark" style="padding: 20px; margin-bottom: 20px; display: none;">
+                  <h4><i class="fa-brands fa-github text-gradient"></i> Connect GitHub Repo for Live Mode</h4>
+                  <p class="description-para" style="font-size: 0.8rem; margin-bottom: 12px;">You must connect a public repository to fetch code changes and run live audits.</p>
+                  <div class="form-group" style="margin-bottom: 12px;">
+                    <input type="text" id="github-repo-input" placeholder="e.g. owner/repository" value="">
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-full" id="github-connect-btn">Connect Repository</button>
+                  <div id="github-connection-msg" style="font-size: 0.8rem; margin-top: 8px;"></div>
+                </div>
+
+                <form id="analyze-form" class="dashboard-form">
+                  <div class="form-group">
+                    <label for="release-version">Release Version Tag / Commit Hash</label>
+                    <input type="text" id="release-version" value="v4.2" placeholder="e.g., v4.2" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="target-service">Target Microservice</label>
+                    <select id="target-service">
+                      <option value="checkout-service" selected>checkout-service</option>
+                      <option value="payment-service">payment-service</option>
+                      <option value="auth-service">auth-service</option>
+                    </select>
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-full" id="analyze-submit-btn">
+                    Run Pre-Deployment Audit
+                  </button>
+                </form>
+
+                <div class="console-divider"></div>
+
+                <div class="terminal-logs-wrapper">
+                  <span class="log-title">Telemetry Pipelines Log</span>
+                  <div class="terminal-logs" id="pipeline-logs">
+                    <div class="log-line">Idle. Input version and service to trigger scanning.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Risk Score Report Panel -->
+            <div class="glass-card fill-grid-cell result-card">
+              <div class="card-header">
+                <h3>Risk Audit Results</h3>
+                <span class="badge" id="risk-badge">N/A</span>
+              </div>
+              <div class="card-body scroll-body flex-column">
+                <div class="gauge-center-wrapper">
+                  <div class="risk-gauge-container">
+                    <svg class="gauge-svg" viewBox="0 0 120 120">
+                      <circle class="gauge-bg" cx="60" cy="60" r="50"></circle>
+                      <circle class="gauge-value" cx="60" cy="60" r="50" id="gauge-circle" stroke-dasharray="314.16" stroke-dashoffset="314.16"></circle>
+                    </svg>
+                    <div class="gauge-score-value">
+                      <span id="gauge-score-text">--</span>
+                      <span class="pct">%</span>
+                    </div>
+                  </div>
+                  <div class="gauge-labels">
+                    <span class="label-name">Risk Coefficient</span>
+                    <span id="gauge-recommendation" class="label-val text-gradient">Pending Input</span>
+                  </div>
+                </div>
+
+                <div class="score-breakdown-sliders">
+                  <div class="slider-item">
+                    <span>Memory & CPU Leak:</span>
+                    <div class="progress-bar-container"><div class="progress-bar-fill" id="breakdown-memory" style="width: 0%"></div></div>
+                  </div>
+                  <div class="slider-item">
+                    <span>Jira Open Bugs:</span>
+                    <div class="progress-bar-container"><div class="progress-bar-fill" id="breakdown-bugs" style="width: 0%"></div></div>
+                  </div>
+                  <div class="slider-item">
+                    <span>Prometheus Latency:</span>
+                    <div class="progress-bar-container"><div class="progress-bar-fill" id="breakdown-latency" style="width: 0%"></div></div>
+                  </div>
+                  <div class="slider-item">
+                    <span>Historical Similarity:</span>
+                    <div class="progress-bar-container"><div class="progress-bar-fill" id="breakdown-history" style="width: 0%"></div></div>
+                  </div>
+                </div>
+
+                <div class="ai-report-markdown" id="risk-ai-markdown">
+                  <div class="empty-state">
+                    <i class="fa-solid fa-brain-circuit"></i>
+                    <p>Enter release and run audit to construct Gemini predictive outage report.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Incident Time Machine -->
+        <div id="tab-time-machine" class="tab-pane">
+          <div class="pane-grid-2">
+            <div class="glass-card fill-grid-cell">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-clock-rotate-left"></i> Incident Time Machine</h3>
+              </div>
+              <div class="card-body">
+                <p class="description-para">Reconstruct timeline steps, triggers, and cascading errors for historical outages to understand and block repetitions.</p>
+                
+                <form id="outage-form" class="dashboard-form">
+                  <div class="form-group">
+                    <label for="outage-query">Investigate Outage Query</label>
+                    <input type="text" id="outage-query" value="checkout memory leak" placeholder="e.g., checkout pool, payment stream error">
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-full">Reconstruct Incident Timeline</button>
+                </form>
+
+                <div class="timeline-visual-wrapper">
+                  <h4>Incident Chronology Timeline</h4>
+                  <ul class="timeline-stepper" id="incident-steps-timeline">
+                    <li class="timeline-step empty-timeline-step">
+                      <div class="step-bullet"></div>
+                      <div class="step-content">Enter a query above to load incident timeline.</div>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="glass-card fill-grid-cell">
+              <div class="card-header">
+                <h3>Incident Autopsy & RCA report</h3>
+              </div>
+              <div class="card-body scroll-body" id="outage-ai-markdown">
+                <div class="empty-state">
+                  <i class="fa-solid fa-clock"></i>
+                  <p>Reconstruct an incident to load Gemini outage diagnosis.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Release Advisor -->
+        <div id="tab-release-advisor" class="tab-pane">
+          <div class="pane-grid-2">
+            <div class="glass-card fill-grid-cell">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Intelligent Release Advisor</h3>
+              </div>
+              <div class="card-body">
+                <p class="description-para">Get optimal deployment strategies based on active infrastructure cluster loads and open code vulnerabilities.</p>
+                
+                <form id="advice-form" class="dashboard-form">
+                  <div class="form-group">
+                    <label for="advice-service">Select microservice</label>
+                    <select id="advice-service">
+                      <option value="checkout-service">checkout-service</option>
+                      <option value="payment-service">payment-service</option>
+                      <option value="auth-service">auth-service</option>
+                    </select>
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-full">Generate Release Strategy</button>
+                </form>
+
+                <div class="canary-viz-container">
+                  <h4>Recommended Canary Schedule</h4>
+                  <div class="traffic-split-stages">
+                    <div class="split-stage">
+                      <div class="split-circle">10%</div>
+                      <span>Stage 1</span>
+                    </div>
+                    <div class="split-arrow"><i class="fa-solid fa-arrow-right-long"></i></div>
+                    <div class="split-stage">
+                      <div class="split-circle">25%</div>
+                      <span>Stage 2</span>
+                    </div>
+                    <div class="split-arrow"><i class="fa-solid fa-arrow-right-long"></i></div>
+                    <div class="split-stage">
+                      <div class="split-circle">50%</div>
+                      <span>Stage 3</span>
+                    </div>
+                    <div class="split-arrow"><i class="fa-solid fa-arrow-right-long"></i></div>
+                    <div class="split-stage highlight">
+                      <div class="split-circle">100%</div>
+                      <span>Stage 4</span>
+                    </div>
+                  </div>
+                  <p class="canary-caption"><i class="fa-solid fa-circle-info"></i> Estimated Risk Mitigation with Canary strategy: <strong>68% risk reduction</strong></p>
+                </div>
+              </div>
+            </div>
+
+            <div class="glass-card fill-grid-cell">
+              <div class="card-header">
+                <h3>AI Recommendation Strategy</h3>
+              </div>
+              <div class="card-body scroll-body" id="advice-ai-markdown">
+                <div class="empty-state">
+                  <i class="fa-solid fa-scroll"></i>
+                  <p>Fetch advice to generate personalized deployment plans.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Root Cause Analysis -->
+        <div id="tab-root-cause" class="tab-pane">
+          <div class="pane-grid-2">
+            <div class="glass-card fill-grid-cell">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-magnifying-glass-chart"></i> Root Cause Anomaly Scanner</h3>
+              </div>
+              <div class="card-body">
+                <form id="investigate-form" class="dashboard-form">
+                  <div class="form-group">
+                    <label for="investigate-service">Microservice to Investigate</label>
+                    <select id="investigate-service">
+                      <option value="checkout-service">checkout-service</option>
+                      <option value="payment-service">payment-service</option>
+                      <option value="auth-service">auth-service</option>
+                    </select>
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-full">Scan Metrics & Investigate</button>
+                </form>
+
+                <div class="console-divider"></div>
+
+                <h4>Active Telemetry Gauges</h4>
+                <div class="telemetry-gauges-grid" id="anomaly-metrics-grid">
+                  <div class="telemetry-gauge-card bg-glass-dark">
+                    <div class="gauge-title">CPU</div>
+                    <div class="gauge-value font-mono" id="metric-cpu">--</div>
+                  </div>
+                  <div class="telemetry-gauge-card bg-glass-dark">
+                    <div class="gauge-title">Memory</div>
+                    <div class="gauge-value font-mono" id="metric-mem">--</div>
+                  </div>
+                  <div class="telemetry-gauge-card bg-glass-dark">
+                    <div class="gauge-title">Latency</div>
+                    <div class="gauge-value font-mono" id="metric-latency">--</div>
+                  </div>
+                  <div class="telemetry-gauge-card bg-glass-dark">
+                    <div class="gauge-title">Error Rate</div>
+                    <div class="gauge-value font-mono" id="metric-error">--</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="glass-card fill-grid-cell">
+              <div class="card-header">
+                <h3>Anomaly Investigation Report</h3>
+              </div>
+              <div class="card-body scroll-body" id="investigate-ai-markdown">
+                <div class="empty-state">
+                  <i class="fa-solid fa-dna"></i>
+                  <p>Scan metrics to analyze core triggers and dependencies.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 5: Slack Command Simulator -->
+        <div id="tab-slack-simulator" class="tab-pane">
+          <div class="slack-simulator-wrapper">
+            <div class="glass-card slack-header-card">
+              <h3><i class="fa-brands fa-slack"></i> Slack Real-Time Agent Simulator</h3>
+              <p>Type Sentinel Slash commands below to preview their interactive response frames as structured Slack Block Kit components.</p>
+            </div>
+
+            <div class="slack-chat-box">
+              <div class="slack-messages-feed" id="slack-feed">
+                <!-- Example initial greeting -->
+                <div class="slack-message">
+                  <div class="avatar"><i class="fa-solid fa-shield-halved"></i></div>
+                  <div class="message-content">
+                    <div class="sender-name">Sentinel AI <span class="app-tag">APP</span> <span class="timestamp">12:19 PM</span></div>
+                    <div class="message-text">Welcome to Sentinel AI DevOps Guardian interface. I am monitoring your deployment risk in real-time. Try typing `/analyze-release v4.2` or `/explain-outage` in the simulator prompt.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="slack-prompt-line">
+                <div class="quick-commands-list">
+                  <button class="badge badge-btn" data-cmd="/analyze-release v4.2">/analyze-release v4.2</button>
+                  <button class="badge badge-btn" data-cmd="/explain-outage Friday">/explain-outage Friday</button>
+                  <button class="badge badge-btn" data-cmd="/deployment-advice">/deployment-advice</button>
+                  <button class="badge badge-btn" data-cmd="/investigate checkout-service">/investigate checkout-service</button>
+                </div>
+                <form id="slack-form" class="slack-input-form">
+                  <input type="text" id="slack-input" placeholder="Type slash command e.g., /analyze-release v4.2..." autocomplete="off">
+                  <button type="submit" class="btn btn-primary btn-round"><i class="fa-solid fa-paper-plane"></i></button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 6: Settings & Models -->
+        <div id="tab-model-config" class="tab-pane">
+          <div class="pane-grid-2">
+            <div class="glass-card fill-grid-cell">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-gears"></i> Sentinel AI Control Board</h3>
+              </div>
+              <div class="card-body">
+                <div class="config-section">
+                  <h4>Gemini API Configuration</h4>
+                  <form onsubmit="event.preventDefault();" class="form-group">
+                    <label for="user-api-key">Your Gemini API Key</label>
+                    <div style="position: relative; display: flex; width: 100%;">
+                      <input type="password" id="user-api-key" placeholder="Enter key (Optionally leaves blank to trigger Fallback API Key)" autocomplete="new-password" style="padding-right: 40px; width: 100%;">
+                      <button type="button" id="toggle-api-key-visibility" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center;">
+                        <i class="fa-solid fa-eye" id="toggle-api-key-icon"></i>
+                      </button>
+                    </div>
+                    <small class="helper-text">
+                      <i class="fa-solid fa-circle-exclamation text-yellow"></i> Leave blank to use our integrated Hackathon Fallback API Key.
+                    </small>
+                    <a href="https://aistudio.google.com/app/apikey" target="_blank" class="ai-studio-link" style="display: inline-block; margin-top: 8px;">
+                      <i class="fa-solid fa-arrow-up-right-from-square"></i> Get Gemini API Key on Google AI Studio
+                    </a>
+                  </form>
+                </div>
+
+                <div class="console-divider"></div>
+
+                <div class="config-section">
+                  <h4>LLM Model Switching Queue</h4>
+                  <p class="description-para">To fully leverage the free tiers of Gemini and avoid rate limitation blockers, Sentinel AI automatically switches downstream LLM pipelines in the following order:</p>
+                  
+                  <div class="model-queue-viz">
+                    <div class="model-item active-model">
+                      <div class="model-num">1</div>
+                      <div class="model-name">gemini-2.5-flash <span class="badge-mini">Primary</span></div>
+                    </div>
+                    <div class="model-item">
+                      <div class="model-num">2</div>
+                      <div class="model-name">gemini-1.5-flash <span class="badge-mini">Secondary Fallback</span></div>
+                    </div>
+                    <div class="model-item">
+                      <div class="model-num">3</div>
+                      <div class="model-name">gemini-1.5-pro <span class="badge-mini">Tertiary Fallback</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="glass-card fill-grid-cell">
+              <div class="card-header">
+                <h3>Fallback API Credentials</h3>
+              </div>
+              <div class="card-body">
+                <div class="credentials-badge bg-glass-dark">
+                  <div class="badge-title"><i class="fa-solid fa-key text-gradient"></i> Hardcoded Fallback API Token</div>
+                  <div class="badge-token font-mono" id="fallback-key-display">Loading fallback credentials...</div>
+                  <p class="badge-note">If your primary key fails or rate-limits, this token is injected automatically into requests to ensure uninterrupted DevOps deployment analysis.</p>
+                </div>
+
+                <div class="console-divider"></div>
+
+                <h4>Active AI Pipeline Session Diagnostics</h4>
+                <div class="diagnostic-grid">
+                  <div class="diag-item">
+                    <span class="lbl">Last Model Selected:</span>
+                    <span class="val font-mono" id="diag-last-model">N/A</span>
+                  </div>
+                  <div class="diag-item">
+                    <span class="lbl">Credentials Target:</span>
+                    <span class="val font-mono" id="diag-last-key">N/A</span>
+                  </div>
+                  <div class="diag-item">
+                    <span class="lbl">Connectivity Status:</span>
+                    <span class="val" id="diag-status"><span class="badge badge-green">Ready</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+    </div>
+  </main>
+
+  <footer class="main-footer">
+    <p>&copy; 2026 Sentinel AI. Built for the Slack Agent Builder Challenge.</p>
+  </footer>
+
+  <script src="console.js"></script>
+</body>
+</html>
