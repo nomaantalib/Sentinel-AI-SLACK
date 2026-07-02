@@ -9,7 +9,7 @@ import { IncidentModel } from './database/mongo';
 let slackApp: App;
 let receiver: ExpressReceiver | undefined;
 
-// In-memory registry to track connected GitHub repositories per Slack channel
+// In-memory registry to track connected GitHub repositories per Slack channel / DM
 const connectedRepos: Record<string, string> = {};
 
 /**
@@ -221,7 +221,80 @@ function registerSlackHandlers(app: App) {
     }
   });
 
-  // Event handler: App Mention
+  // Event handler: Direct Messages (DMs / Messages Tab)
+  app.message(async ({ message, client, say }) => {
+    const rawMsg = message as any;
+    // Only handle DMs (IMs) to prevent spamming normal channels
+    if (rawMsg.channel_type === 'im') {
+      const rawText = rawMsg.text || '';
+      const channel = rawMsg.channel;
+      
+      console.log(`[Slack DM] Message from user ${rawMsg.user}: "${rawText}"`);
+
+      try {
+        // Connect command check: connect repo <owner/repo>
+        const connectMatch = rawText.match(/connect\s+repo\s+([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/i);
+        if (connectMatch) {
+          const repo = connectMatch[1];
+          await say(`📁 Verifying connection to GitHub repository \`${repo}\`...`);
+          
+          try {
+            const tree = await getRepoTree(repo);
+            if (!tree || tree.length === 0) {
+              await say(`❌ Could not connect to repository \`${repo}\`. Verify it exists and is public, or check your GITHUB_TOKEN credentials.`);
+              return;
+            }
+            
+            connectedRepos[channel] = repo;
+            await say(`✅ *Successfully connected to repository:* \`${repo}\` for this chat!\nAll subsequent DevOps queries, release checks, and questions will now be answered using this codebase as context.`);
+          } catch (err: any) {
+            await say(`❌ Failed to connect repository \`${repo}\`: ${err.message}`);
+          }
+          return;
+        }
+
+        // MANDATORY CHECK: Ensure a repository is connected to this chat channel first
+        const currentRepo = connectedRepos[channel];
+        if (!currentRepo) {
+          await say(`⚠️ *Sentinel AI is not connected to a GitHub repository!*\nBefore I can answer your questions, please connect a repository first.\n\n👉 *Run:* \`connect repo owner/repo\` (e.g. \`connect repo nomaantalib/Sentinel-AI-SLACK\`)`);
+          return;
+        }
+
+        const lowerText = rawText.toLowerCase();
+
+        // Handle commands once connected
+        if (lowerText.includes('analyze') || lowerText.includes('release')) {
+          const { version, service } = parseParams(rawText);
+          await say(`🔍 Analyzing release *${version}* for service *${service}* using connected repo *${currentRepo}*...`);
+          await runReleaseAnalysis(version, service, currentRepo, client, channel);
+        } 
+        else if (lowerText.includes('outage') || lowerText.includes('explain') || lowerText.includes('time machine')) {
+          const query = rawText.replace(/(explain|outage|time|machine)/gi, '').trim() || 'Friday outage';
+          await say(`⏳ Querying Incident Time Machine for "${query}"...`);
+          await runExplainOutage(query, client, channel);
+        } 
+        else if (lowerText.includes('advice') || lowerText.includes('strategy') || lowerText.includes('advisor')) {
+          const service = parseParams(rawText).service;
+          await say(`💡 Querying Release Advisor for service *${service}*...`);
+          await runDeploymentAdvice(service, client, channel);
+        } 
+        else if (lowerText.includes('investigate') || lowerText.includes('diagnose') || lowerText.includes('root cause')) {
+          const service = parseParams(rawText).service;
+          await say(`🛠️ Diagnosing active anomalies for service *${service}*...`);
+          await runInvestigate(service, client, channel);
+        } 
+        else {
+          await say(`🤖 Analyzing your request using codebase context from \`${currentRepo}\`...`);
+          await runAskRepo(currentRepo, rawText, client, channel);
+        }
+      } catch (err: any) {
+        console.error('[Slack message DM] Error:', err);
+        await say(`❌ Sorry, I encountered an error: ${err.message || err}`);
+      }
+    }
+  });
+
+  // Event handler: App Mention (Channels)
   app.event('app_mention', async ({ event, client, say }) => {
     const rawText = event.text;
     const channel = event.channel;
@@ -230,7 +303,7 @@ function registerSlackHandlers(app: App) {
     const cleanedText = rawText.replace(/<@[A-Z0-9]+>/g, '').trim();
     const lowerText = cleanedText.toLowerCase();
 
-    console.log(`[Slack] App mention from user ${event.user}: "${cleanedText}"`);
+    console.log(`[Slack Mention] App mention from user ${event.user}: "${cleanedText}"`);
 
     try {
       // Connect command check: connect repo <owner/repo>
@@ -319,7 +392,6 @@ function registerSlackHandlers(app: App) {
         await runInvestigate(service, client, channel, threadTs);
       } 
       else {
-        // Every general chat is now answered as an agent query using the connected repo
         await say({
           channel,
           thread_ts: threadTs,
@@ -347,7 +419,7 @@ function registerSlackHandlers(app: App) {
     if (!match) {
       await client.chat.postMessage({
         channel,
-        text: `❌ Invalid usage. Correct format: \`/connect-repo owner/repo\` (e.g. \`/connect-repo nomaantalib/Sentinel-AI-SLACK\`)`
+        text: `❌ Invalid usage. Correct format: \`/connect-repo owner/repo\``
       });
       return;
     }
@@ -379,7 +451,7 @@ function registerSlackHandlers(app: App) {
     }
   });
 
-  // Slash Command: /ask-repo <owner/repo> <question> (Kept as optional direct command)
+  // Slash Command: /ask-repo <owner/repo> <question>
   app.command('/ask-repo', async ({ command, ack, client }) => {
     await ack();
     const channel = command.channel_id;
