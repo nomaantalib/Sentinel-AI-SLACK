@@ -86,7 +86,7 @@ async function getRepoTree(repo: string): Promise<any[]> {
       return data.tree || [];
     } catch (retryErr: any) {
       console.error(`[Slack getRepoTree] Failed fetching master branch tree: ${retryErr.message}`);
-      return [];
+      throw new Error(`GitHub API error: ${err.message || err}`);
     }
   }
 }
