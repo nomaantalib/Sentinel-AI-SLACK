@@ -49,6 +49,100 @@ function parseParams(text: string) {
 }
 
 /**
+ * Helper to fetch from GitHub API with optional auth tokens
+ */
+async function fetchGitHub(url: string): Promise<any> {
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github.v3+json',
+    'User-Agent': 'sentinel-ai-devops-guardian'
+  };
+  if (process.env.GITHUB_TOKEN) {
+    headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+  } else if (process.env.GITHUB_PAT) {
+    headers['Authorization'] = `token ${process.env.GITHUB_PAT}`;
+  }
+
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    throw new Error(`GitHub API HTTP ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
+}
+
+/**
+ * Helper to fetch the repository structure (file tree)
+ */
+async function getRepoTree(repo: string): Promise<any[]> {
+  try {
+    // Try main branch first
+    const data = await fetchGitHub(`https://api.github.com/repos/${repo}/git/trees/main?recursive=1`);
+    return data.tree || [];
+  } catch (err: any) {
+    console.warn(`[Slack getRepoTree] Failed fetching main branch tree: ${err.message}. Retrying master branch...`);
+    try {
+      const data = await fetchGitHub(`https://api.github.com/repos/${repo}/git/trees/master?recursive=1`);
+      return data.tree || [];
+    } catch (retryErr: any) {
+      console.error(`[Slack getRepoTree] Failed fetching master branch tree: ${retryErr.message}`);
+      return [];
+    }
+  }
+}
+
+/**
+ * Helper to fetch file content and decode from base64
+ */
+async function getFileContent(repo: string, filePath: string): Promise<string> {
+  const data = await fetchGitHub(`https://api.github.com/repos/${repo}/contents/${filePath}`);
+  if (data.content && data.encoding === 'base64') {
+    return Buffer.from(data.content, 'base64').toString('utf-8');
+  }
+  return '';
+}
+
+/**
+ * Intelligent file matcher based on query keywords and exact filenames
+ */
+function findRelevantFiles(tree: any[], query: string): string[] {
+  const words = query.toLowerCase().split(/\s+/);
+  const matchedPaths: string[] = [];
+  
+  for (const item of tree) {
+    if (item.type !== 'blob') continue;
+    const pathLower = item.path.toLowerCase();
+    
+    // Check if any word matches the path or filename
+    const isMatched = words.some(word => {
+      if (word.length < 3) return false;
+      // Skip common conversational words
+      if (['the', 'and', 'for', 'repo', 'github', 'explain', 'what', 'how', 'show', 'view', 'read'].includes(word)) return false;
+      return pathLower.includes(word);
+    });
+    
+    if (isMatched) {
+      matchedPaths.push(item.path);
+    }
+  }
+  
+  // Regex to extract file patterns (e.g. server.ts, db.ts)
+  const filenameRegex = /[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+/g;
+  let match;
+  while ((match = filenameRegex.exec(query)) !== null) {
+    const filename = match[0].toLowerCase();
+    for (const item of tree) {
+      if (item.type === 'blob' && item.path.toLowerCase().endsWith(filename)) {
+        if (!matchedPaths.includes(item.path)) {
+          matchedPaths.push(item.path);
+        }
+      }
+    }
+  }
+
+  // Return top 5 relevant files to stay within context size limits
+  return matchedPaths.slice(0, 5);
+}
+
+/**
  * Initialize the Slack Bolt application
  */
 export function initSlack(expressApp: express.Application) {
@@ -145,7 +239,21 @@ function registerSlackHandlers(app: App) {
     console.log(`[Slack] App mention from user ${event.user}: "${cleanedText}"`);
 
     try {
-      if (lowerText.includes('analyze') || lowerText.includes('release')) {
+      // Match GitHub query regex: ask repo <owner/repo> <question>
+      const askRepoRegex = /ask\s+repo\s+([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)\s+(.+)/i;
+      const matchAskRepo = cleanedText.match(askRepoRegex);
+
+      if (matchAskRepo) {
+        const repo = matchAskRepo[1];
+        const question = matchAskRepo[2];
+        await say({
+          channel,
+          thread_ts: threadTs,
+          text: `📁 Fetching repository \`${repo}\` details for codebase context...`
+        });
+        await runAskRepo(repo, question, client, channel, threadTs);
+      }
+      else if (lowerText.includes('analyze') || lowerText.includes('release')) {
         const { version, service, repo } = parseParams(cleanedText);
         await say({
           channel,
@@ -195,6 +303,38 @@ function registerSlackHandlers(app: App) {
         channel,
         thread_ts: threadTs,
         text: `❌ Sorry, I encountered an error: ${err.message || err}`
+      });
+    }
+  });
+
+  // Slash Command: /ask-repo <owner/repo> <question>
+  app.command('/ask-repo', async ({ command, ack, client }) => {
+    await ack();
+    const channel = command.channel_id;
+    const text = command.text.trim();
+    
+    const match = text.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)\s+(.+)$/i);
+    if (!match) {
+      await client.chat.postMessage({
+        channel,
+        text: `❌ Invalid usage. Correct format: \`/ask-repo owner/repo your question\` (e.g. \`/ask-repo nomaantalib/Sentinel-AI-SLACK explain server.ts\`)`
+      });
+      return;
+    }
+    
+    const repo = match[1];
+    const question = match[2];
+    
+    try {
+      await client.chat.postMessage({
+        channel,
+        text: `📁 Querying repository \`${repo}\` for: "${question}" (triggered via slash command)...`
+      });
+      await runAskRepo(repo, question, client, channel);
+    } catch (err: any) {
+      await client.chat.postMessage({
+        channel,
+        text: `❌ Error querying repository: ${err.message || err}`
       });
     }
   });
@@ -274,6 +414,102 @@ function registerSlackHandlers(app: App) {
       });
     }
   });
+}
+
+/**
+ * Runner for GitHub Repo Context Querying
+ */
+async function runAskRepo(
+  repo: string,
+  question: string,
+  client: any,
+  channel: string,
+  threadTs?: string
+) {
+  try {
+    const tree = await getRepoTree(repo);
+    if (!tree || tree.length === 0) {
+      await client.chat.postMessage({
+        channel,
+        thread_ts: threadTs,
+        text: `❌ Could not read the file tree for repository \`${repo}\`. Verify it is public, or check your \`GITHUB_TOKEN\` / \`GITHUB_PAT\` credentials.`
+      });
+      return;
+    }
+
+    let relevantFiles = findRelevantFiles(tree, question);
+    
+    // Fallback: Default to README.md and package.json if no specific files matched
+    if (relevantFiles.length === 0) {
+      const readme = tree.find((item: any) => item.path.toLowerCase() === 'readme.md');
+      const pkg = tree.find((item: any) => item.path.toLowerCase() === 'package.json');
+      if (readme) relevantFiles.push(readme.path);
+      if (pkg) relevantFiles.push(pkg.path);
+    }
+
+    if (relevantFiles.length === 0) {
+      const topLevelFiles = tree
+        .filter((item: any) => !item.path.includes('/'))
+        .slice(0, 10)
+        .map((item: any) => `• \`${item.path}\``)
+        .join('\n');
+      
+      await client.chat.postMessage({
+        channel,
+        thread_ts: threadTs,
+        text: `🔍 I couldn't automatically find files matching your query keywords. Here are the top-level files in the repository:\n${topLevelFiles}\n\nPlease ask about one of these files!`
+      });
+      return;
+    }
+
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: `📖 Reading files from repo for context:\n${relevantFiles.map(f => `• \`${f}\``).join('\n')}...`
+    });
+
+    let context = `Context from GitHub Repository "${repo}":\n\n`;
+    for (const filePath of relevantFiles) {
+      try {
+        const content = await getFileContent(repo, filePath);
+        if (content) {
+          const truncatedContent = content.length > 15000 ? content.slice(0, 15000) + '\n[Content Truncated...]' : content;
+          context += `--- File: ${filePath} ---\n${truncatedContent}\n\n`;
+        }
+      } catch (err: any) {
+        console.warn(`[Slack runAskRepo] Skipping content fetch for ${filePath}:`, err.message);
+      }
+    }
+
+    const systemPrompt = `You are Sentinel AI Codebase Guardian, acting as a GitHub MCP Context Provider. 
+Analyze the provided codebase files, understand their purpose and architecture, and answer the user's question with high technical accuracy.
+Cite specific files, functions, or lines of code in your explanation. Use Slack formatting (e.g. *bold* instead of **bold**, and bullet points).`;
+
+    const userPrompt = `
+Here is the codebase context:
+${context}
+
+User's Question: ${question}
+
+Please answer the question based on the codebase context provided.`;
+
+    const aiResult = await GeminiService.generateContent(userPrompt, systemPrompt, undefined, true);
+    const slackText = formatMarkdownForSlack(aiResult.text);
+
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: `💻 *Codebase Analysis for ${repo}*\n\n${slackText}`
+    });
+
+  } catch (err: any) {
+    console.error('[Slack runAskRepo] Failed:', err);
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: `❌ Error querying codebase: ${err.message || err}`
+    });
+  }
 }
 
 /**
