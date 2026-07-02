@@ -18,6 +18,7 @@ const connectedRepos: Record<string, string> = {};
 function formatMarkdownForSlack(text: string): string {
   return text
     .replace(/^###? (.*)$/gm, '*$1*') // Headings to bold
+    .replace(/\*\/(.*?)\*\//g, '*$1*') // Bold fallback
     .replace(/\*\*(.*?)\*\*/g, '*$1*') // **bold** to *bold*
     .replace(/^\s*[-*]\s+/gm, '• '); // Bullet points
 }
@@ -49,6 +50,50 @@ function parseParams(text: string) {
   }
 
   return { version, service, repo };
+}
+
+/**
+ * Helper to parse owner/repo from URL, MCP URI, or raw paths
+ */
+function parseGitHubRepo(input: string): string | null {
+  const cleanInput = input.trim();
+  
+  // 1. Direct owner/repo match
+  const directPattern = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
+  if (directPattern.test(cleanInput)) {
+    return cleanInput;
+  }
+  
+  // 2. URL or MCP URI parsing
+  try {
+    let urlString = cleanInput;
+    // Handle lack of protocol
+    if (!urlString.startsWith('http://') && !urlString.startsWith('https://') && !urlString.startsWith('mcp://')) {
+      urlString = 'https://' + urlString;
+    }
+    
+    // Replace mcp:// with https:// to parse natively using URL object
+    urlString = urlString.replace(/^mcp:\/\//i, 'https://');
+    
+    const parsedUrl = new URL(urlString);
+    if (parsedUrl.hostname.includes('github.com')) {
+      const pathParts = parsedUrl.pathname.split('/').filter(p => !!p);
+      if (pathParts.length >= 2) {
+        return `${pathParts[0]}/${pathParts[1]}`;
+      }
+    }
+  } catch (e) {
+    // Fallback to regex
+  }
+  
+  // 3. Fallback regex search
+  const regex = /(?:github\.com|mcp:\/\/github\.com)\/([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/i;
+  const match = cleanInput.match(regex);
+  if (match) {
+    return match[1];
+  }
+  
+  return null;
 }
 
 /**
@@ -224,7 +269,6 @@ function registerSlackHandlers(app: App) {
   // Event handler: Direct Messages (DMs / Messages Tab)
   app.message(async ({ message, client, say }) => {
     const rawMsg = message as any;
-    // Only handle DMs (IMs) to prevent spamming normal channels
     if (rawMsg.channel_type === 'im') {
       const rawText = rawMsg.text || '';
       const channel = rawMsg.channel;
@@ -232,10 +276,17 @@ function registerSlackHandlers(app: App) {
       console.log(`[Slack DM] Message from user ${rawMsg.user}: "${rawText}"`);
 
       try {
-        // Connect command check: connect repo <owner/repo>
-        const connectMatch = rawText.match(/connect\s+repo\s+([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/i);
+        // Connect command check: connect repo <owner/repo or URL or MCP URI>
+        const connectMatch = rawText.match(/connect\s+repo\s+(.+)/i);
         if (connectMatch) {
-          const repo = connectMatch[1];
+          const rawRepo = connectMatch[1].trim();
+          const repo = parseGitHubRepo(rawRepo);
+          
+          if (!repo) {
+            await say(`❌ Could not parse GitHub repository from "${rawRepo}". Use \`owner/repo\` or a GitHub URL.`);
+            return;
+          }
+
           await say(`📁 Verifying connection to GitHub repository \`${repo}\`...`);
           
           try {
@@ -306,10 +357,21 @@ function registerSlackHandlers(app: App) {
     console.log(`[Slack Mention] App mention from user ${event.user}: "${cleanedText}"`);
 
     try {
-      // Connect command check: connect repo <owner/repo>
-      const connectMatch = cleanedText.match(/connect\s+repo\s+([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/i);
+      // Connect command check: connect repo <owner/repo or URL or MCP URI>
+      const connectMatch = cleanedText.match(/connect\s+repo\s+(.+)/i);
       if (connectMatch) {
-        const repo = connectMatch[1];
+        const rawRepo = connectMatch[1].trim();
+        const repo = parseGitHubRepo(rawRepo);
+
+        if (!repo) {
+          await say({
+            channel,
+            thread_ts: threadTs,
+            text: `❌ Could not parse GitHub repository from "${rawRepo}". Use \`owner/repo\` or a GitHub URL.`
+          });
+          return;
+        }
+
         await say({
           channel,
           thread_ts: threadTs,
@@ -340,6 +402,31 @@ function registerSlackHandlers(app: App) {
             text: `❌ Failed to connect repository \`${repo}\`: ${err.message}`
           });
         }
+        return;
+      }
+
+      // Match GitHub query: ask repo <repo_url_or_path> <question>
+      const askRepoMatch = cleanedText.match(/ask\s+repo\s+([^\s]+)\s+(.+)/i);
+      if (askRepoMatch) {
+        const rawRepo = askRepoMatch[1];
+        const question = askRepoMatch[2];
+        const repo = parseGitHubRepo(rawRepo);
+        
+        if (!repo) {
+          await say({
+            channel,
+            thread_ts: threadTs,
+            text: `❌ Could not parse GitHub repository from "${rawRepo}".`
+          });
+          return;
+        }
+
+        await say({
+          channel,
+          thread_ts: threadTs,
+          text: `📁 Fetching repository \`${repo}\` details for codebase context...`
+        });
+        await runAskRepo(repo, question, client, channel, threadTs);
         return;
       }
 
@@ -409,17 +496,17 @@ function registerSlackHandlers(app: App) {
     }
   });
 
-  // Slash Command: /connect-repo <owner/repo>
+  // Slash Command: /connect-repo <owner/repo or URL>
   app.command('/connect-repo', async ({ command, ack, client }) => {
     await ack();
     const channel = command.channel_id;
-    const repo = command.text.trim();
+    const rawRepo = command.text.trim();
+    const repo = parseGitHubRepo(rawRepo);
     
-    const match = repo.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)$/i);
-    if (!match) {
+    if (!repo) {
       await client.chat.postMessage({
         channel,
-        text: `❌ Invalid usage. Correct format: \`/connect-repo owner/repo\``
+        text: `❌ Could not parse GitHub repository from "${rawRepo}". Correct formats:\n• \`owner/repo\`\n• \`https://github.com/owner/repo\``
       });
       return;
     }
@@ -451,23 +538,32 @@ function registerSlackHandlers(app: App) {
     }
   });
 
-  // Slash Command: /ask-repo <owner/repo> <question>
+  // Slash Command: /ask-repo <owner/repo or URL> <question>
   app.command('/ask-repo', async ({ command, ack, client }) => {
     await ack();
     const channel = command.channel_id;
     const text = command.text.trim();
     
-    const match = text.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)\s+(.+)$/i);
-    if (!match) {
+    const firstSpaceIndex = text.indexOf(' ');
+    if (firstSpaceIndex === -1) {
       await client.chat.postMessage({
         channel,
-        text: `❌ Invalid usage. Correct format: \`/ask-repo owner/repo your question\``
+        text: `❌ Invalid usage. Correct format: \`/ask-repo [repo_url_or_path] [question]\``
       });
       return;
     }
     
-    const repo = match[1];
-    const question = match[2];
+    const rawRepo = text.slice(0, firstSpaceIndex).trim();
+    const question = text.slice(firstSpaceIndex).trim();
+    
+    const repo = parseGitHubRepo(rawRepo);
+    if (!repo) {
+      await client.chat.postMessage({
+        channel,
+        text: `❌ Could not parse GitHub repository from "${rawRepo}".`
+      });
+      return;
+    }
     
     try {
       await client.chat.postMessage({
